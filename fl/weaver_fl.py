@@ -12,6 +12,7 @@ import json
 import math
 import os
 import random
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -171,6 +172,94 @@ def run_minindn_backend(config: Dict, payload_dir: Path, output_dir: Path, produ
     return output_path
 
 
+def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, producers: Sequence[str], seq: int) -> Path:
+    """Run the ns-3 QUIC aggregation backend.
+
+    The imported QUIC simulator currently transports its own uint64 vector
+    workload. The Weaver FL loop still uses WFL1 payloads for model updates;
+    if the simulator does not produce a WFL1 aggregate, this backend records
+    the QUIC run and then writes the same weighted aggregate locally so the FL
+    loop remains end-to-end executable.
+    """
+
+    network = config["network"]
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not network.get("execute", False):
+        return local_weighted_average(payload_dir, output_dir, producers, seq)
+
+    output_path = output_dir / f"aggregate-{seq}.wfl"
+    first_payload = read_payload(payload_dir / f"{producers[0]}-{seq}.wfl")
+    payload_dim = len(first_payload.values)
+
+    env = os.environ.copy()
+    env["WEAVER_PAYLOAD_DIR"] = str(payload_dir)
+    env["WEAVER_OUTPUT_DIR"] = str(output_dir)
+    env["WEAVER_SEQ"] = str(seq)
+    env["WEAVER_PRODUCERS"] = ",".join(producers)
+
+    pcap_dir = network.get("pcap_dir")
+    if pcap_dir:
+        Path(pcap_dir).mkdir(parents=True, exist_ok=True)
+
+    log_path = output_dir / "ns3-quic.log"
+    cwd = Path(network.get("cwd", "."))
+    if "command" in network:
+        command = str(network["command"])
+        shell = True
+    else:
+        binary = Path(network["binary"])
+        args = [str(binary)]
+        if network.get("pass_standard_args", True):
+            args.extend(
+                [
+                    f"--itr={int(network.get('iterations', seq))}",
+                    f"--vsize={int(network.get('vsize', payload_dim))}",
+                    f"--topotype={int(network.get('topotype', 0))}",
+                    f"--cc={network.get('cc', 'bbr')}",
+                    f"--stoptime={network.get('stop_time', 5)}",
+                ]
+            )
+            if "basetime" in network:
+                args.append(f"--basetime={network['basetime']}")
+        args.extend(str(arg) for arg in network.get("args", []))
+        command = args
+        shell = False
+
+    with log_path.open("w") as log_file:
+        if isinstance(command, str):
+            log_file.write(f"$ {command}\n")
+        else:
+            log_file.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n")
+        log_file.flush()
+        subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            check=True,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+
+    if output_path.exists():
+        return output_path
+
+    if not network.get("local_aggregate_after_execute", True):
+        raise FileNotFoundError(f"ns-3 QUIC backend did not produce {output_path}")
+
+    aggregate_path = local_weighted_average(payload_dir, output_dir, producers, seq)
+    summary = {
+        "backend": "ns3_quic",
+        "executed_network": True,
+        "network_log": str(log_path),
+        "aggregate_source": "local_weighted_average_after_ns3_quic_run",
+        "note": "The current ns-3 QUIC binary runs its built-in uint64 aggregation workload; WFL1 model aggregation is produced by the Weaver FL driver.",
+    }
+    (output_dir / "ns3-quic-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return aggregate_path
+
+
 def run_round(config: Dict, round_idx: int, weights: Vector, clients: Sequence[ClientState]) -> Vector:
     training = config["training"]
     network = config["network"]
@@ -202,6 +291,8 @@ def run_round(config: Dict, round_idx: int, weights: Vector, clients: Sequence[C
         aggregate_path = run_ndnsim_backend(config, payload_dir, output_dir, producers, seq)
     elif backend == "minindn":
         aggregate_path = run_minindn_backend(config, payload_dir, output_dir, producers, seq)
+    elif backend == "ns3_quic":
+        aggregate_path = run_ns3_quic_backend(config, payload_dir, output_dir, producers, seq)
     else:
         raise ValueError(f"unsupported backend: {backend}")
     return read_payload(aggregate_path).values

@@ -18,6 +18,7 @@ Public dependencies:
   - Builds one process binary, `weaverd`, with `--role root|aggregator|producer`.
 - `fl/`
   - Python FL driver in the style of ns3-fl: Python owns the model/data loop, while the network backend transports and aggregates serialized model updates.
+  - Supports ndnSIM, Mini-NDN, and ns-3 QUIC aggregation backends.
 - `scripts/`
   - Helper scripts for applying the ndnSIM overlay and debugging a local ndnSIM run.
 
@@ -78,6 +79,7 @@ The smoke configs use WFL1 serialized model-update files but keep `network.execu
 cd fl
 python3 weaver_fl.py --config configs/ndnsim_smoke.json
 python3 weaver_fl.py --config configs/minindn_smoke.json
+python3 weaver_fl.py --config configs/ns3_quic_smoke.json
 ```
 
 For real backends, copy one of the `.example.json` files, edit the external paths, and set `network.execute=true`.

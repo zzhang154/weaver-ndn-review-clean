@@ -41,3 +41,11 @@ python3 weaver_fl.py --config configs/minindn_smoke.json
 ```
 
 For real miniNDN execution, set `network.execute=true` and provide a command that starts the miniNDN experiment. The driver exports `WEAVER_PAYLOAD_DIR`, `WEAVER_OUTPUT_DIR`, `WEAVER_SEQ`, and `WEAVER_PRODUCERS` for that command.
+
+The ns-3 QUIC aggregation backend is exposed as `ns3_quic`:
+
+```bash
+python3 weaver_fl.py --config configs/ns3_quic_smoke.json
+```
+
+For real execution, copy `configs/ns3_quic_exec.example.json`, point `network.cwd` and `network.binary` at an ns-3.42 tree with the QUIC aggregation binary, and set `network.execute=true`. The current QUIC binary runs its built-in uint64 vector aggregation workload; when it does not write a WFL1 aggregate, the Weaver FL driver records the QUIC run and writes the WFL1 model aggregate from the same client payloads.
