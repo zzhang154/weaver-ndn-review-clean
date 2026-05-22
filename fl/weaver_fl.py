@@ -175,11 +175,10 @@ def run_minindn_backend(config: Dict, payload_dir: Path, output_dir: Path, produ
 def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, producers: Sequence[str], seq: int) -> Path:
     """Run the ns-3 QUIC aggregation backend.
 
-    The imported QUIC simulator currently transports its own uint64 vector
-    workload. The Weaver FL loop still uses WFL1 payloads for model updates;
-    if the simulator does not produce a WFL1 aggregate, this backend records
-    the QUIC run and then writes the same weighted aggregate locally so the FL
-    loop remains end-to-end executable.
+    When WEAVER_PAYLOAD_DIR/WEAVER_OUTPUT_DIR are present, the patched QUIC
+    data plane reads WFL1 model updates from producer files, carries them as
+    QUIC payload bytes, aggregates them at in-network servers, and writes the
+    root WFL1 aggregate.
     """
 
     network = config["network"]
@@ -191,6 +190,8 @@ def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, prod
     output_path = output_dir / f"aggregate-{seq}.wfl"
     first_payload = read_payload(payload_dir / f"{producers[0]}-{seq}.wfl")
     payload_dim = len(first_payload.values)
+    wfl_payload_bytes = 12 + payload_dim * 8
+    wfl_vsize = math.ceil(wfl_payload_bytes / 8)
 
     env = os.environ.copy()
     env["WEAVER_PAYLOAD_DIR"] = str(payload_dir)
@@ -211,10 +212,12 @@ def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, prod
         binary = Path(network["binary"])
         args = [str(binary)]
         if network.get("pass_standard_args", True):
+            configured_vsize = network.get("vsize")
+            vsize = max(int(configured_vsize), wfl_vsize) if configured_vsize is not None else wfl_vsize
             args.extend(
                 [
                     f"--itr={int(network.get('iterations', seq))}",
-                    f"--vsize={int(network.get('vsize', payload_dim))}",
+                    f"--vsize={vsize}",
                     f"--topotype={int(network.get('topotype', 0))}",
                     f"--cc={network.get('cc', 'bbr')}",
                     f"--stoptime={network.get('stop_time', 5)}",
@@ -243,6 +246,14 @@ def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, prod
         )
 
     if output_path.exists():
+        summary = {
+            "backend": "ns3_quic",
+            "executed_network": True,
+            "network_log": str(log_path),
+            "aggregate_source": "ns3_quic_wfl1_data_plane",
+            "wfl_payload_bytes": wfl_payload_bytes,
+        }
+        (output_dir / "ns3-quic-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         return output_path
 
     if not network.get("local_aggregate_after_execute", True):
@@ -254,7 +265,7 @@ def run_ns3_quic_backend(config: Dict, payload_dir: Path, output_dir: Path, prod
         "executed_network": True,
         "network_log": str(log_path),
         "aggregate_source": "local_weighted_average_after_ns3_quic_run",
-        "note": "The current ns-3 QUIC binary runs its built-in uint64 aggregation workload; WFL1 model aggregation is produced by the Weaver FL driver.",
+        "note": "The ns-3 QUIC backend did not write a WFL1 aggregate; this run used the compatibility fallback.",
     }
     (output_dir / "ns3-quic-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return aggregate_path
