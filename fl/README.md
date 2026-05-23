@@ -40,7 +40,7 @@ The miniNDN backend uses the same WFL1 files. Its smoke config is:
 python3 weaver_fl.py --config configs/minindn_smoke.json
 ```
 
-For real miniNDN execution, set `network.execute=true` and provide a command that starts the miniNDN experiment. The driver exports `WEAVER_PAYLOAD_DIR`, `WEAVER_OUTPUT_DIR`, `WEAVER_SEQ`, and `WEAVER_PRODUCERS` for that command.
+For real miniNDN execution, set `network.execute=true` and provide a command that starts the miniNDN experiment. The driver exports `WEAVER_PAYLOAD_DIR`, `WEAVER_OUTPUT_DIR`, `WEAVER_SEQ`, `WEAVER_PRODUCERS`, and `WEAVER_PAYLOAD_FORMAT` for that command. With `"payload_format": "quic"`, MiniNDN carries each WFL1 update inside the same QUIC aggregation packet envelope used by the ns-3 QUIC backend.
 
 The ns-3 QUIC aggregation backend is exposed as `ns3_quic`:
 

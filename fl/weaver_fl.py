@@ -164,11 +164,19 @@ def run_minindn_backend(config: Dict, payload_dir: Path, output_dir: Path, produ
     env["WEAVER_RUNTIME"] = str(network.get("runtime", 60))
     env["WEAVER_NO_CLI"] = "1"
     env["WEAVER_PRODUCERS"] = ",".join(producers)
+    env["WEAVER_PAYLOAD_FORMAT"] = str(network.get("payload_format", "wfl1"))
     subprocess.run(command, shell=True, check=True, env=env)
 
     output_path = output_dir / f"aggregate-{seq}.wfl"
     if not output_path.exists():
         raise FileNotFoundError(f"miniNDN backend did not produce {output_path}")
+    summary = {
+        "backend": "minindn",
+        "executed_network": True,
+        "payload_format": env["WEAVER_PAYLOAD_FORMAT"],
+        "aggregate_source": "minindn_weaver_data_plane",
+    }
+    (output_dir / "minindn-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return output_path
 
 

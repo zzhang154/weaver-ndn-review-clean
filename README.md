@@ -22,6 +22,7 @@ This directory is a lightweight core overlay for the Weaver prototype. It keeps 
 - `miniNDN/`
   - miniNDN/ndn-cxx implementation of the same Weaver Root/Aggregator/Producer design.
   - builds one process binary, `weaverd`, with `--role root|aggregator|producer`.
+  - can carry FL updates either as raw WFL1 Data content or as a QUIC aggregation packet envelope.
 - `fl/`
   - Python FL driver/config layer in the style of ns3-fl.
   - serializes real model updates into WFL1 payloads and calls the Weaver network backend.
@@ -101,6 +102,12 @@ python3 weaver_fl.py --config configs/ns3_quic_exec.json
 ```
 
 This invokes the ns-3.42 QUIC aggregation binary. The patched QUIC data plane reads `WFL1` model updates from the round payload directory, transports them as QUIC payload bytes, performs sample-weighted in-network aggregation, and writes the root `aggregate-<seq>.wfl`.
+
+MiniNDN can exercise the same QUIC application-packet envelope over NDN Data with:
+
+```bash
+python3 weaver_fl.py --config configs/minindn_quic_exec.example.json
+```
 
 ## Source Notes
 
